@@ -46,6 +46,15 @@ export GEMINI_API_KEY="your_api_key_here"
 - **Run**: `cargo run` (The server will start and wait for MCP messages on stdin).
 - **Test**: `cargo test`
 
+## CI/CD Workflows
+
+The project uses GitHub Actions for continuous integration and delivery:
+- **CI (`ci.yml`)**: Automatically runs formatting checks, Clippy lints, and unit tests on every push and pull request.
+- **Release (`release.yml`)**: Triggered on pushes to the `main` branch. 
+    1. It checks the current version in `Cargo.toml`.
+    2. If the version hasn't been bumped (i.e., a tag for it already exists), it automatically increments the patch version, commits the change, and pushes it back to the repository.
+    3. If the version is new, it builds release binaries for Linux and macOS (Intel & Apple Silicon) and creates a new GitHub Release with these artifacts attached.
+
 ## Development Conventions
 
 - **API Usage**: Use `Server::builder(ServerStdioTransport)` for initialization.

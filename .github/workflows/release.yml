@@ -1,0 +1,130 @@
+name: Release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-bump:
+    name: Check Version and Bump
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.VERSION }}
+      should_release: ${{ steps.check_tag.outputs.SHOULD_RELEASE }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get current version
+        id: get_version
+        run: |
+          VERSION=$(grep '^version =' Cargo.toml | cut -d '"' -f 2)
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Current version is $VERSION"
+
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          VERSION=${{ steps.get_version.outputs.VERSION }}
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "Tag v$VERSION already exists. Bumping version..."
+            echo "SHOULD_RELEASE=false" >> $GITHUB_OUTPUT
+          else
+            echo "Tag v$VERSION does not exist. Ready to release."
+            echo "SHOULD_RELEASE=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Bump version if needed
+        if: steps.check_tag.outputs.SHOULD_RELEASE == 'false'
+        run: |
+          VERSION=${{ steps.get_version.outputs.VERSION }}
+          # Simple patch bump
+          IFS='.' read -r major minor patch <<< "$VERSION"
+          NEW_PATCH=$((patch + 1))
+          NEW_VERSION="$major.$minor.$NEW_PATCH"
+          
+          echo "Bumping from $VERSION to $NEW_VERSION"
+          sed -i "s/^version = \"$VERSION\"/version = \"$NEW_VERSION\"/" Cargo.toml
+          
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml
+          git commit -m "chore: bump version to $NEW_VERSION [skip ci]"
+          git push
+          
+          echo "Version bumped to $NEW_VERSION and pushed. This run will stop here, next push will trigger release."
+          exit 0
+
+  build-and-release:
+    name: Build and Release
+    needs: check-and-bump
+    if: needs.check-and-bump.outputs.should_release == 'true'
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: gem-mcprst-linux-x86_64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: gem-mcprst-macos-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: gem-mcprst-macos-aarch64
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p staging
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp target/${{ matrix.target }}/release/gem-mcprst.exe staging/${{ matrix.artifact_name }}.exe
+          else
+            cp target/${{ matrix.target }}/release/gem-mcprst staging/${{ matrix.artifact_name }}
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: staging/*
+
+  create-release:
+    name: Create Release
+    needs: [check-and-bump, build-and-release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.check-and-bump.outputs.version }}
+          name: Release v${{ needs.check-and-bump.outputs.version }}
+          files: artifacts/**/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
