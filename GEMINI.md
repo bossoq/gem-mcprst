@@ -2,6 +2,8 @@
 
 `gem-mcprst` is a Model Context Protocol (MCP) server implemented in Rust. Its primary purpose is to provide a bridge between an MCP client (like Claude Code) and the Google Gemini API, specifically for offloading heavy code generation or file-writing tasks to save context tokens in the main client session.
 
+For a user-facing summary and installation guide, refer to the [README.md](./README.md).
+
 ### Core Technologies
 - **Rust**: Language of choice, using the 2024 edition.
 - **async-mcp**: Standard Rust SDK (v0.1.3) for building MCP servers.
