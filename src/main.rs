@@ -114,22 +114,14 @@ async fn handle_execute_task(request: CallToolRequest) -> anyhow::Result<CallToo
         .await?;
 
     // Extract generated text content
-    let mut content = gemini_data
+    let content_raw = gemini_data
         .candidates
         .first()
         .and_then(|c| c.content.parts.first())
         .map(|p| p.text.as_str())
-        .unwrap_or("")
-        .trim()
-        .to_string();
+        .unwrap_or("");
 
-    // Clean up residual Markdown fences (```rust / ```) if Gemini ignored the prompt instruction
-    if content.starts_with("```") && content.ends_with("```") {
-        let lines: Vec<&str> = content.lines().collect();
-        if lines.len() >= 2 {
-            content = lines[1..lines.len() - 1].join("\n");
-        }
-    }
+    let content = clean_gemini_response(content_raw);
 
     // Ensure the target parent directory exists
     let path = Path::new(&args.target_file);
@@ -139,7 +131,7 @@ async fn handle_execute_task(request: CallToolRequest) -> anyhow::Result<CallToo
 
     // Write the output directly to the workspace file
     let mut file = File::create(path)?;
-    file.write_all(content.trim().as_bytes())?;
+    file.write_all(content.as_bytes())?;
 
     // Return success response to Claude Code
     Ok(CallToolResponse {
@@ -152,4 +144,56 @@ async fn handle_execute_task(request: CallToolRequest) -> anyhow::Result<CallToo
         is_error: None,
         meta: None,
     })
+}
+
+/// Cleans up residual Markdown fences (```rust / ```) if Gemini ignored the prompt instruction
+fn clean_gemini_response(content: &str) -> String {
+    let mut content = content.trim().to_string();
+    if content.starts_with("```") && content.ends_with("```") {
+        let lines: Vec<&str> = content.lines().collect();
+        if lines.len() >= 2 {
+            content = lines[1..lines.len() - 1].join("\n");
+        }
+    }
+    content.trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_clean_gemini_response_with_fences() {
+        let input = "```rust\nfn main() {}\n```";
+        let expected = "fn main() {}";
+        assert_eq!(clean_gemini_response(input), expected);
+
+        let input_no_lang = "```\nhello world\n```";
+        let expected_no_lang = "hello world";
+        assert_eq!(clean_gemini_response(input_no_lang), expected_no_lang);
+    }
+
+    #[test]
+    fn test_clean_gemini_response_without_fences() {
+        let input = "plain text content";
+        let expected = "plain text content";
+        assert_eq!(clean_gemini_response(input), expected);
+    }
+
+    #[test]
+    fn test_clean_gemini_response_empty() {
+        assert_eq!(clean_gemini_response(""), "");
+        assert_eq!(clean_gemini_response("   "), "");
+    }
+
+    #[test]
+    fn test_execute_task_args_deserialization() {
+        let json = json!({
+            "prompt": "write a function",
+            "target_file": "src/lib.rs"
+        });
+        let args: ExecuteTaskArgs = serde_json::from_value(json).unwrap();
+        assert_eq!(args.prompt, "write a function");
+        assert_eq!(args.target_file, "src/lib.rs");
+    }
 }
