@@ -50,6 +50,8 @@ export GEMINI_API_KEY="your_api_key_here"
 
 - **API Usage**: Use `Server::builder(ServerStdioTransport)` for initialization.
 - **Handlers**: Tool handlers must return `anyhow::Result<CallToolResponse>` and be registered using `Box::pin` if using the low-level `register_tool` API.
+- **Testing**: Comprehensive unit tests are located in `src/main.rs`. Use `cargo test` to verify logic for response cleaning and argument parsing.
+- **Utilities**: `clean_gemini_response` is used to strip Markdown fences from Gemini output before writing to disk.
 - **Surgical Updates**: When modifying `src/main.rs`, maintain the existing structure of tool definitions and handlers.
 - **Error Handling**: Leverages `anyhow` for robust error propagation back to the MCP client.
 - **Formatting**: Adhere to standard Rust formatting. Run `cargo fmt` before committing.
