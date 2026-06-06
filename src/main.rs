@@ -103,15 +103,9 @@ async fn handle_execute_task(request: CallToolRequest) -> anyhow::Result<CallToo
         }]
     });
 
-    let response = client
-        .post(&url)
-        .json(&payload)
-        .send()
-        .await?;
+    let response = client.post(&url).json(&payload).send().await?;
 
-    let gemini_data: GeminiResponse = response
-        .json()
-        .await?;
+    let gemini_data: GeminiResponse = response.json().await?;
 
     // Extract generated text content
     let content_raw = gemini_data
