@@ -52,17 +52,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // 3. Build and run the server using standard input/output (stdio)
-    let mut builder = Server::builder(ServerStdioTransport)
+    let execute_tool_for_list = execute_tool.clone();
+    let server = Server::builder(ServerStdioTransport)
         .name("gemini-executor")
         .version("1.0.1")
         .capabilities(ServerCapabilities {
-            tools: Some(json!({})),
+            tools: Some(json!({
+                "listChanged": false
+            })),
             ..Default::default()
-        });
+        })
+        // Manual handler for tools/list to be tolerant of null/empty params
+        .request_handler("tools/list", move |_req: serde_json::Value| {
+            let tool = execute_tool_for_list.clone();
+            Box::pin(async move {
+                Ok(json!({
+                    "tools": [tool]
+                }))
+            })
+        })
+        // Manual handler for tools/call
+        .request_handler("tools/call", |req: CallToolRequest| {
+            Box::pin(handle_execute_task(req))
+        })
+        .build();
 
-    builder.register_tool(execute_tool, |req| Box::pin(handle_execute_task(req)));
-
-    let server = builder.build();
     server.listen().await?;
 
     Ok(())
