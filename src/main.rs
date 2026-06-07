@@ -75,7 +75,10 @@ async fn handle_execute_task(request: CallToolRequest) -> anyhow::Result<CallToo
     let args_json = serde_json::to_value(arguments)?;
     let args: ExecuteTaskArgs = serde_json::from_value(args_json)?;
 
-    eprintln!("🤖 Forwarding task for {} to local Gemini CLI...", args.target_file);
+    eprintln!(
+        "🤖 Forwarding task for {} to local Gemini CLI...",
+        args.target_file
+    );
 
     // Call local gemini CLI
     let prompt = format!(
@@ -84,12 +87,7 @@ async fn handle_execute_task(request: CallToolRequest) -> anyhow::Result<CallToo
     );
 
     let output = Command::new("gemini")
-        .args([
-            "--prompt",
-            &prompt,
-            "--output-format",
-            "text",
-        ])
+        .args(["--prompt", &prompt, "--output-format", "text"])
         .output()?;
 
     if !output.status.success() {
