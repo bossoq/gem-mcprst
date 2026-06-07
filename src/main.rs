@@ -3,13 +3,12 @@ use async_mcp::transport::ServerStdioTransport;
 use async_mcp::types::{
     CallToolRequest, CallToolResponse, ServerCapabilities, Tool, ToolResponseContent,
 };
-use reqwest::Client;
 use serde::Deserialize;
 use serde_json::json;
-use std::env;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
+use std::process::Command;
 
 // Structures to parse the incoming MCP tool arguments
 #[derive(Deserialize)]
@@ -18,43 +17,23 @@ struct ExecuteTaskArgs {
     target_file: String,
 }
 
-// Structures to parse Gemini's API response
-#[derive(Deserialize)]
-struct GeminiResponse {
-    candidates: Vec<Candidate>,
-}
-
-#[derive(Deserialize)]
-struct Candidate {
-    content: Content,
-}
-
-#[derive(Deserialize)]
-struct Content {
-    parts: Vec<Part>,
-}
-
-#[derive(Deserialize)]
-struct Part {
-    text: String,
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 1. Check for the API Key immediately to provide better startup feedback
-    let api_key_status = if env::var("GEMINI_API_KEY").is_ok() {
-        "configured ✅"
+    // 1. Check if gemini CLI is available in the path
+    let cli_check = Command::new("gemini").arg("--version").output();
+    let cli_status = if cli_check.is_ok() {
+        "detected ✅"
     } else {
-        "MISSING ❌ (Please set GEMINI_API_KEY environment variable)"
+        "NOT FOUND ❌ (Please ensure 'gemini' CLI is installed and in your PATH)"
     };
 
     eprintln!("🚀 Starting gemini-executor MCP server...");
-    eprintln!("🔑 Gemini API Key: {}", api_key_status);
+    eprintln!("💻 Local Gemini CLI: {}", cli_status);
 
     // 2. Define the tool schema exposed to Claude Code
     let execute_tool = Tool {
         name: "execute_task".to_string(),
-        description: Some("Offloads heavy code generation or file writing tasks to Gemini to save context tokens.".to_string()),
+        description: Some("Offloads heavy code generation or file writing tasks to Gemini CLI to save context tokens.".to_string()),
         input_schema: json!({
             "type": "object",
             "properties": {
@@ -72,10 +51,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         output_schema: None,
     };
 
-    // 2. Build and run the server using standard input/output (stdio)
+    // 3. Build and run the server using standard input/output (stdio)
     let mut builder = Server::builder(ServerStdioTransport)
         .name("gemini-executor")
-        .version("1.0.0")
+        .version("1.0.1")
         .capabilities(ServerCapabilities {
             tools: Some(json!({})),
             ..Default::default()
@@ -96,42 +75,34 @@ async fn handle_execute_task(request: CallToolRequest) -> anyhow::Result<CallToo
     let args_json = serde_json::to_value(arguments)?;
     let args: ExecuteTaskArgs = serde_json::from_value(args_json)?;
 
-    // Pull the Gemini API Key from the environment variables
-    let api_key = env::var("GEMINI_API_KEY")
-        .map_err(|_| anyhow::anyhow!("Environment variable 'GEMINI_API_KEY' is missing."))?;
+    eprintln!("🤖 Forwarding task for {} to local Gemini CLI...", args.target_file);
 
-    eprintln!("🤖 Forwarding task for {} to Gemini...", args.target_file);
-
-    // Call Gemini API using reqwest
-    let client = Client::new();
-    let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    // Call local gemini CLI
+    let prompt = format!(
+        "Task: {}\nTarget File: {}\nReturn ONLY raw code/text content for the file. Do not include markdown code block backticks (```).",
+        args.prompt, args.target_file
     );
 
-    let payload = json!({
-        "contents": [{
-            "parts": [{
-                "text": format!(
-                    "Task: {}\nTarget File: {}\nReturn ONLY raw code/text content for the file. Do not include markdown code block backticks (```).",
-                    args.prompt, args.target_file
-                )
-            }]
-        }]
-    });
+    let output = Command::new("gemini")
+        .args([
+            "--prompt",
+            &prompt,
+            "--output-format",
+            "text",
+        ])
+        .output()?;
 
-    let response = client.post(&url).json(&payload).send().await?;
+    if !output.status.success() {
+        let error_msg = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!("Gemini CLI failed: {}", error_msg));
+    }
 
-    let gemini_data: GeminiResponse = response.json().await?;
+    let content_raw = String::from_utf8_lossy(&output.stdout);
+    let content = clean_gemini_response(&content_raw);
 
-    // Extract generated text content
-    let content_raw = gemini_data
-        .candidates
-        .first()
-        .and_then(|c| c.content.parts.first())
-        .map(|p| p.text.as_str())
-        .unwrap_or("");
-
-    let content = clean_gemini_response(content_raw);
+    if content.is_empty() {
+        return Err(anyhow::anyhow!("Gemini CLI returned empty content."));
+    }
 
     // Ensure the target parent directory exists
     let path = Path::new(&args.target_file);
@@ -147,7 +118,7 @@ async fn handle_execute_task(request: CallToolRequest) -> anyhow::Result<CallToo
     Ok(CallToolResponse {
         content: vec![ToolResponseContent::Text {
             text: format!(
-                "Successfully offloaded to Gemini. Wrote contents to {}.",
+                "Successfully offloaded to local Gemini CLI. Wrote contents to {}.",
                 args.target_file
             ),
         }],

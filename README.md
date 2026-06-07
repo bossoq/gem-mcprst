@@ -37,12 +37,7 @@ cargo build --release
 
 ### Configuration
 
-The server requires your Gemini API key as an environment variable.
-
-#### Environment Variable
-```bash
-export GEMINI_API_KEY="your_api_key_here"
-```
+The server invokes the local `gemini` CLI. Ensure it is installed and available in your `PATH`.
 
 #### Claude Desktop Integration
 Add this to your `claude_desktop_config.json`:
@@ -52,10 +47,7 @@ Add this to your `claude_desktop_config.json`:
   "mcpServers": {
     "gemini-executor": {
       "command": "cargo",
-      "args": ["run", "--quiet", "--manifest-path", "/path/to/gem-mcprst/Cargo.toml"],
-      "env": {
-        "GEMINI_API_KEY": "your_api_key_here"
-      }
+      "args": ["run", "--quiet", "--manifest-path", "/path/to/gem-mcprst/Cargo.toml"]
     }
   }
 }
