@@ -1,6 +1,8 @@
 use async_mcp::server::Server;
 use async_mcp::transport::ServerStdioTransport;
-use async_mcp::types::{CallToolRequest, CallToolResponse, Tool, ToolResponseContent};
+use async_mcp::types::{
+    CallToolRequest, CallToolResponse, ServerCapabilities, Tool, ToolResponseContent,
+};
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::json;
@@ -39,7 +41,17 @@ struct Part {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 1. Define the tool schema exposed to Claude Code
+    // 1. Check for the API Key immediately to provide better startup feedback
+    let api_key_status = if env::var("GEMINI_API_KEY").is_ok() {
+        "configured ✅"
+    } else {
+        "MISSING ❌ (Please set GEMINI_API_KEY environment variable)"
+    };
+
+    eprintln!("🚀 Starting gemini-executor MCP server...");
+    eprintln!("🔑 Gemini API Key: {}", api_key_status);
+
+    // 2. Define the tool schema exposed to Claude Code
     let execute_tool = Tool {
         name: "execute_task".to_string(),
         description: Some("Offloads heavy code generation or file writing tasks to Gemini to save context tokens.".to_string()),
@@ -63,7 +75,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 2. Build and run the server using standard input/output (stdio)
     let mut builder = Server::builder(ServerStdioTransport)
         .name("gemini-executor")
-        .version("1.0.0");
+        .version("1.0.0")
+        .capabilities(ServerCapabilities {
+            tools: Some(json!({})),
+            ..Default::default()
+        });
 
     builder.register_tool(execute_tool, |req| Box::pin(handle_execute_task(req)));
 
