@@ -120,7 +120,8 @@ jobs:
       
       - name: Download all artifacts
         uses: actions/download-artifact@v4
-        path: artifacts
+        with:
+          path: artifacts
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
