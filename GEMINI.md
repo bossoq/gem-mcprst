@@ -23,7 +23,7 @@ The server operates over standard input/output (stdio), following the MCP specif
   - `target_file`: The workspace path where the generated output should be written.
 - **Workflow**:
   1. Receives the task from the MCP client.
-  2. Forwards the prompt to Gemini (using the `GEMINI_API_KEY` environment variable).
+  2. Forwards the prompt to `agy` CLI.
   3. Cleans up the response (removes Markdown code blocks).
   4. Automatically creates any missing parent directories for the `target_file`.
   5. Writes the generated content directly to the disk.
@@ -66,4 +66,4 @@ The project uses GitHub Actions for continuous integration and delivery:
 - **Surgical Updates**: When modifying `src/main.rs`, maintain the existing structure of tool definitions and handlers.
 - **Error Handling**: Leverages `anyhow` for robust error propagation back to the MCP client.
 - **Formatting**: Adhere to standard Rust formatting. Run `cargo fmt` before committing.
-- **API Version**: Currently uses `gemini-2.5-flash` model. Update the URL in `src/main.rs` if a different model or version is required.
+- **API Model**: Currently uses `flash` model via the `agy` CLI.

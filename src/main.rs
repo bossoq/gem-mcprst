@@ -19,21 +19,21 @@ struct ExecuteTaskArgs {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 1. Check if gemini CLI is available in the path
-    let cli_check = Command::new("gemini").arg("--version").output();
+    // 1. Check if agy CLI is available in the path
+    let cli_check = Command::new("agy").arg("--version").output();
     let cli_status = if cli_check.is_ok() {
         "detected ✅"
     } else {
-        "NOT FOUND ❌ (Please ensure 'gemini' CLI is installed and in your PATH)"
+        "NOT FOUND ❌ (Please ensure 'agy' CLI is installed and in your PATH)"
     };
 
     eprintln!("🚀 Starting gemini-executor MCP server...");
-    eprintln!("💻 Local Gemini CLI: {}", cli_status);
+    eprintln!("💻 Local agy CLI: {cli_status}");
 
     // 2. Define the tool schema exposed to Claude Code
     let execute_tool = Tool {
         name: "execute_task".to_string(),
-        description: Some("Offloads heavy code generation or file writing tasks to Gemini CLI to save context tokens.".to_string()),
+        description: Some("Offloads heavy code generation or file writing tasks to agy CLI to save context tokens.".to_string()),
         input_schema: json!({
             "type": "object",
             "properties": {
@@ -90,30 +90,30 @@ async fn handle_execute_task(request: CallToolRequest) -> anyhow::Result<CallToo
     let args: ExecuteTaskArgs = serde_json::from_value(args_json)?;
 
     eprintln!(
-        "🤖 Forwarding task for {} to local Gemini CLI...",
+        "🤖 Forwarding task for {} to local agy CLI...",
         args.target_file
     );
 
-    // Call local gemini CLI
+    // Call local agy CLI
     let prompt = format!(
         "Task: {}\nTarget File: {}\nReturn ONLY raw code/text content for the file. Do not include markdown code block backticks (```).",
         args.prompt, args.target_file
     );
 
-    let output = Command::new("gemini")
-        .args(["--prompt", &prompt, "--output-format", "text"])
+    let output = Command::new("agy")
+        .args(["--model", "flash", "-p", &prompt])
         .output()?;
 
     if !output.status.success() {
         let error_msg = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow::anyhow!("Gemini CLI failed: {}", error_msg));
+        return Err(anyhow::anyhow!("agy CLI failed: {error_msg}"));
     }
 
     let content_raw = String::from_utf8_lossy(&output.stdout);
     let content = clean_gemini_response(&content_raw);
 
     if content.is_empty() {
-        return Err(anyhow::anyhow!("Gemini CLI returned empty content."));
+        return Err(anyhow::anyhow!("agy CLI returned empty content."));
     }
 
     // Ensure the target parent directory exists
@@ -130,7 +130,7 @@ async fn handle_execute_task(request: CallToolRequest) -> anyhow::Result<CallToo
     Ok(CallToolResponse {
         content: vec![ToolResponseContent::Text {
             text: format!(
-                "Successfully offloaded to local Gemini CLI. Wrote contents to {}.",
+                "Successfully offloaded to local agy CLI. Wrote contents to {}.",
                 args.target_file
             ),
         }],

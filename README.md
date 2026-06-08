@@ -37,7 +37,7 @@ cargo build --release
 
 ### Configuration
 
-The server invokes the local `gemini` CLI. Ensure it is installed and available in your `PATH`.
+The server invokes the local `agy` CLI. Ensure it is installed and available in your `PATH`.
 
 #### Claude Desktop Integration
 Add this to your `claude_desktop_config.json`:
